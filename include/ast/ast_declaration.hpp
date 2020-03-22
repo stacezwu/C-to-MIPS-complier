@@ -4,15 +4,7 @@
 #include <string>
 #include <iostream>
 
-// class Initializer : public ASTNode {
-    
-// }
-
-// std::vector<Declaration*> GlobalVariables;
-// void addtoGlobalVariables(Declaration* _declaration){
-//     GlobalVariables.push_back(_declaration);
-// }
-
+class Context;
 
 class Declaration : public ASTNode {
 private:
@@ -20,7 +12,6 @@ private:
     ASTNode* specifiers;
     std::string* identifier;
     ASTNode* initializer;
-    
 
 public:
     
@@ -50,13 +41,18 @@ public:
         }
         dst<<std::endl;
     }
+    
+    virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {
+        
+        context.localVarMap.insert({*identifier, "int"});
+        if (initializer != NULL){
+            initializer->printMIPS(dst, context);
+            pushToStack(dst, destReg); 
+            // dst<<"sw $"<<destReg<<", "<<offset<<"($fp)";
+
+        }
+    }
 };
 
-// class DeclarationList: public Declaration{
-// protected:
-    
-// public: 
-
-// };
 
 #endif

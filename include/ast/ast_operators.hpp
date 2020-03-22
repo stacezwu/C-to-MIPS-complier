@@ -28,6 +28,7 @@ public:
         right->printPy(dst, -1, GlobalIdentifiers);
         dst<<" )";
     }
+    virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {}
 };
 
 class AddOperator : public Operator {
@@ -47,6 +48,16 @@ public:
         double vr=getRight()->evaluate(bindings);
         return vl+vr;
     }
+    
+    virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {
+        if (destReg == 2) context.pushToStack(dst, 3);
+        if (destReg == 3) context.pushToStack(dst, 2);
+        left->printMIPS(dst, context, 2);
+        right->printMIPS(dst, context, 3);
+        dst<<"addu $"<<destReg<<", $2, $3"<<std::endl;
+        if (destReg == 2) context.popFromStack(dst, 3);
+        if (destReg == 3) context.popFromStack(dst, 2);
+    }
 };
 
 class SubOperator : public Operator {
@@ -65,6 +76,16 @@ public:
         double vl=getLeft()->evaluate(bindings);
         double vr=getRight()->evaluate(bindings);
         return vl-vr;
+    }
+    
+    virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {
+        if (destReg == 2) context.pushToStack(dst, 3);
+        if (destReg == 3) context.pushToStack(dst, 2);
+        left->printMIPS(dst, context, 2);
+        right->printMIPS(dst, context, 3);
+        dst<<"subu $"<<destReg<<", $2, $3"<<std::endl;
+        if (destReg == 2) context.popFromStack(dst, 3);
+        if (destReg == 3) context.popFromStack(dst, 2);
     }
 };
 
@@ -86,6 +107,18 @@ public:
         double vr=getRight()->evaluate(bindings);
         return vl*vr;
     }
+    
+    virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {
+        if (destReg == 2) context.pushToStack(dst, 3);
+        if (destReg == 3) context.pushToStack(dst, 2);
+        left->printMIPS(dst, context, 2);
+        right->printMIPS(dst, context, 3);
+        dst<<"mult $2, $3"<<std::endl;
+        dst<<"mflo $"<<destReg<<std::endl; 
+        // destReg store LSB 16 of answer
+        if (destReg == 2) context.popFromStack(dst, 3);
+        if (destReg == 3) context.popFromStack(dst, 2);
+    }
 };
 
 class DivOperator : public Operator {
@@ -104,6 +137,18 @@ public:
         double vl=getLeft()->evaluate(bindings);
         double vr=getRight()->evaluate(bindings);
         return vl/vr;
+    }
+
+    virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {
+        if (destReg == 2) context.pushToStack(dst, 3);
+        if (destReg == 3) context.pushToStack(dst, 2);
+        left->printMIPS(dst, context, 2);
+        right->printMIPS(dst, context, 3); 
+        dst<<"mult $2, $3"<<std::endl;
+        dst<<"mflo $"<<destReg<<std::endl; 
+        // destReg store LSB 16 of answer
+        if (destReg == 2) context.popFromStack(dst, 3);
+        if (destReg == 3) context.popFromStack(dst, 2);
     }
 };
 
@@ -246,6 +291,12 @@ public:
         dst<<" "<<getOpcode()<<" ";
         right->printPy(dst, -1, GlobalIdentifiers);
     }
+    
+    virtual void printMIPS(std::ostream &dst, Context& context, int destReg = 2) const override {
+        int offset; // = lookup offset of variable of LHS
+        right->printMIPS(dst, context, destReg);
+        dst<<"sw $"<<destReg<<", $"<<offset<<"($fp)"<<std::endl;
+    }
 };
 
 class PlusEqOperator : public Operator {
@@ -328,20 +379,52 @@ public:
     }
 };
 
+
+class ArgumentList : public ASTNode {
+protected:
+    std::vector<ExpressionPtr> arguments;
+public:
+    ArgumentList(ExpressionPtr _argument) {
+        arguments.push_back(_argument);
+    }
+    
+    virtual ~ArgumentList() {
+        for (auto argument : arguments) {
+            delete argument;
+        }
+        arguments.clear();
+    }
+    
+    ArgumentList* addArgument(ExpressionPtr _argument) {
+        arguments.push_back(_argument);
+        return this;
+    }
+
+    virtual void printPy(std::ostream &dst, int indentLevel, std::vector<std::string>& GlobalIdentifiers) const override {
+        for (auto argument : arguments) {
+            argument->printPy(dst, indentLevel, GlobalIdentifiers);
+            dst<<", ";
+        }
+    }
+    
+    virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {}
+};
+
+
 class FunctionCall : public Expression {
 protected:
     std::string* functionName;
-    ExpressionPtr expr;
+    ArgumentList* arguments;
 public:
-    FunctionCall(std::string* _functionName, ExpressionPtr _expr) : functionName(_functionName), expr(_expr) {}
+    FunctionCall(std::string* _functionName, ArgumentList* _arguments) : functionName(_functionName), arguments(_arguments) {}
     virtual ~FunctionCall() {
         delete functionName;
-        if (expr != NULL) delete expr;
+        if (arguments != NULL) delete arguments;
     }
 
     virtual void printPy(std::ostream &dst, int indentLevel, std::vector<std::string>& GlobalIdentifiers) const override {
         dst<<*functionName<<"(";
-        if (expr != NULL) expr->printPy(dst, -1, GlobalIdentifiers);
+        if (arguments != NULL) arguments->printPy(dst, -1, GlobalIdentifiers);
         dst<<")";
     }
 };

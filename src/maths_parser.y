@@ -2,7 +2,9 @@
   #include "ast.hpp"
 
   #include <cassert>
-
+  #include <fstream>
+  
+  extern FILE* yyin;
   extern const ASTNode* g_root; // A way of getting the AST out
 
   //! This is to fix problems when generating C++
@@ -16,9 +18,10 @@
 // AST node.
 %union{
   ASTNode* astNode; // (Horace) should this be const?
-  TranslationUnit* translationUnit; // (Horace) should this be const?
-  Statement *statement; // (Horace) should this be const?
-  StatementSequence *statementSequence; // (Horace) should this be const?
+  ASTNodeList* astNodeList; // (Horace) should this be const?
+  Statement* statement; // (Horace) should this be const?
+  ParameterList* parameterList;
+  ArgumentList* argumentList;
   Expression *expr;
   double number;
   std::string *string;
@@ -42,10 +45,11 @@
 
 %token T_NUMBER T_STRING T_IDENTIFIER
 
-%type <astNode> FUNC_DEF SPECIFIERS TYPE_SPECIFIER DECLARATION
-%type <translationUnit> TRANSLATION_UNIT
+%type <astNode> FUNC_DEF SPECIFIERS TYPE_SPECIFIER DECLARATION PARAMETER
+%type <astNodeList> TRANSLATION_UNIT BLOCK_ITEM_LIST
 %type <statement> COMPND_STATMNT STATMNT JUMP_STATMNT SELECTION_STATMNT
-%type <statementSequence> STATMNTS;
+%type <parameterList> PARAMETER_LIST
+%type <argumentList> ARGUMENT_LIST
 %type <expr> EXPR PRIMARY_EXPR
 %type <number> T_NUMBER
 %type <string> T_STRING T_IDENTIFIER
@@ -67,22 +71,31 @@ ROOT : TRANSLATION_UNIT { g_root = $1; }
 
 TRANSLATION_UNIT : FUNC_DEF { $$ = new TranslationUnit($1); }
                 | DECLARATION { $$ = new TranslationUnit($1); }
-                | TRANSLATION_UNIT FUNC_DEF { $$ = $1->insertExternalDeclaration($2); }
-                | TRANSLATION_UNIT DECLARATION { $$ = $1->insertExternalDeclaration($2); }
+                | TRANSLATION_UNIT FUNC_DEF { $$ = $1->insert($2); }
+                | TRANSLATION_UNIT DECLARATION { $$ = $1->insert($2); }
 
-FUNC_DEF : TYPE_SPECIFIER T_IDENTIFIER OP_LBRACKET OP_RBRACKET COMPND_STATMNT  { $$ = new FunctionDefinition($1, $2, $5); }
+FUNC_DEF : TYPE_SPECIFIER T_IDENTIFIER OP_LBRACKET OP_RBRACKET COMPND_STATMNT  { $$ = new FunctionDefinition($1, $2, NULL, $5); }
+         | TYPE_SPECIFIER T_IDENTIFIER OP_LBRACKET T_VOID OP_RBRACKET COMPND_STATMNT { $$ = new FunctionDefinition($1, $2, NULL, $6); }
+         | TYPE_SPECIFIER T_IDENTIFIER OP_LBRACKET PARAMETER_LIST OP_RBRACKET COMPND_STATMNT { $$ = new FunctionDefinition($1, $2, $4, $6); }
+         
+PARAMETER_LIST : PARAMETER { $$ = new ParameterList($1); }
+               | PARAMETER_LIST T_COMMA PARAMETER{ $$ = $1->addNewParameter($3); }
+               
+PARAMETER: TYPE_SPECIFIER T_IDENTIFIER { $$ = new Parameter($1, $2); }
+         
+COMPND_STATMNT : T_LBRACE T_RBRACE { $$ = new CompoundStatement(NULL); }
+                | T_LBRACE BLOCK_ITEM_LIST T_RBRACE { $$ = new CompoundStatement($2); }
 
-COMPND_STATMNT : T_LBRACE STATMNTS T_RBRACE { $$ = new CompoundStatement($2); }
+// BLOCK_ITEM_LIST is a sequence of statements and declarations (see here: http://port70.net/~nsz/c/c99/n1256.html#6.8.2 - this is from the C99 specification but it should still work for C89/C90)
+BLOCK_ITEM_LIST : STATMNT { $$ = new BlockItemList($1); }
+                | DECLARATION { $$ = new BlockItemList($1); }
+                | BLOCK_ITEM_LIST STATMNT { $$ = $1->insert($2); }
+                | BLOCK_ITEM_LIST DECLARATION { $$ = $1->insert($2); }
 
-// STATMNTS is a sequence of zero or more STATMNT's
-STATMNTS : /* empty */ { $$ = new StatementSequence(); }
-            | STATMNTS STATMNT { $$ = $1->addStatementToSequence($2); }
-            
 STATMNT : EXPR T_SEMICOLON { $$ = new ExpressionStatement($1); }; // expression statement
             | COMPND_STATMNT { $$ = $1; } // compound statement
             | JUMP_STATMNT T_SEMICOLON { $$ = $1; } // jump statement
             | SELECTION_STATMNT{ $$ = $1; } //selection statement 
-
 
 EXPR : PRIMARY_EXPR { $$ = $1; }
      | EXPR OP_PLUS EXPR {$$ = new AddOperator($1, $3);}
@@ -106,11 +119,15 @@ EXPR : PRIMARY_EXPR { $$ = $1; }
      | EXPR OP_DIVIDE_EQ EXPR { $$ = new DivideEqOperator($1, $3);}
      | EXPR OP_MOD_EQ EXPR { $$ = new ModEqOperator($1, $3);}
      | T_IDENTIFIER OP_LBRACKET OP_RBRACKET { $$ = new FunctionCall($1, NULL); }
-     | T_IDENTIFIER OP_LBRACKET EXPR OP_RBRACKET { $$ = new FunctionCall($1, $3); }
+     | T_IDENTIFIER OP_LBRACKET ARGUMENT_LIST OP_RBRACKET { $$ = new FunctionCall($1, $3); }
 
 PRIMARY_EXPR : T_NUMBER { $$ = new Number($1); }
              | T_STRING { $$ = new StringLiteral($1); }
              | T_IDENTIFIER { $$ = new Variable($1); }
+             | OP_LBRACKET EXPR OP_RBRACKET { $$ = new ParenthesizedExpression($2); }
+
+ARGUMENT_LIST : EXPR { $$ = new ArgumentList($1); }
+                | ARGUMENT_LIST T_COMMA EXPR { $$ = $1->addArgument($3); }
 
 JUMP_STATMNT : ST_BREAK { $$ = new BreakStatement(); }
              | ST_CONTINUE { $$ = new ContinueStatement(); }
@@ -141,17 +158,26 @@ TYPE_SPECIFIER : T_VOID { $$ = new ASTSpecifier(*$1); delete $1; }
                 | T_DOUBLE { $$ = new ASTSpecifier(*$1); delete $1; }
                 
 // Partially complete
-DECLARATION : SPECIFIERS T_IDENTIFIER T_SEMICOLON { $$ = new Declaration($1, $2, NULL); std::cout << "SPECIFIERS T_IDENTIFIER T_SEMICOLON" << std::endl; }
-            | SPECIFIERS T_IDENTIFIER OP_EQ EXPR T_SEMICOLON { $$ = new Declaration($1, $2, $4); }
+DECLARATION : TYPE_SPECIFIER T_IDENTIFIER T_SEMICOLON { $$ = new Declaration($1, $2, NULL); }
+            | TYPE_SPECIFIER T_IDENTIFIER OP_EQ EXPR T_SEMICOLON { $$ = new Declaration($1, $2, $4); }
             // TODO: implement initializer list
 
 %%
 
 const ASTNode* g_root; // Definition of variable (to match declaration earlier)
 
-const ASTNode* parseAST()
-{
+const ASTNode* parseAST() {
   g_root=0;
   yyparse();
+  return g_root;
+}
+
+const ASTNode* parseAST(char* inFile) {
+  g_root = 0;
+  yyin = fopen(inFile, "r");
+  if(yyin) { 
+    yyparse();
+  }
+  fclose(yyin);
   return g_root;
 }

@@ -45,7 +45,9 @@ extern int yydebug;
   #include "ast.hpp"
 
   #include <cassert>
-
+  #include <fstream>
+  
+  extern FILE* yyin;
   extern const ASTNode* g_root; // A way of getting the AST out
 
   //! This is to fix problems when generating C++
@@ -54,7 +56,7 @@ extern int yydebug;
   int yylex(void);
   void yyerror(const char *);
 
-#line 58 "src/maths_parser.tab.hpp" /* yacc.c:1909  */
+#line 60 "src/maths_parser.tab.hpp" /* yacc.c:1909  */
 
 /* Token type.  */
 #ifndef YYTOKENTYPE
@@ -119,17 +121,18 @@ extern int yydebug;
 
 union YYSTYPE
 {
-#line 17 "src/maths_parser.y" /* yacc.c:1909  */
+#line 19 "src/maths_parser.y" /* yacc.c:1909  */
 
   ASTNode* astNode; // (Horace) should this be const?
-  TranslationUnit* translationUnit; // (Horace) should this be const?
-  Statement *statement; // (Horace) should this be const?
-  StatementSequence *statementSequence; // (Horace) should this be const?
+  ASTNodeList* astNodeList; // (Horace) should this be const?
+  Statement* statement; // (Horace) should this be const?
+  ParameterList* parameterList;
+  ArgumentList* argumentList;
   Expression *expr;
   double number;
   std::string *string;
 
-#line 133 "src/maths_parser.tab.hpp" /* yacc.c:1909  */
+#line 136 "src/maths_parser.tab.hpp" /* yacc.c:1909  */
 };
 
 typedef union YYSTYPE YYSTYPE;

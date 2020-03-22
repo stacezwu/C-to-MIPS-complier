@@ -28,6 +28,8 @@ public:
             right->printPy(dst, indentLevel, GlobalIdentifiers);
         }
     }
+    
+    virtual void printMIPS(std::ostream &dst, Context& context, int destReg = 2) const override {}
 };
 
 #endif

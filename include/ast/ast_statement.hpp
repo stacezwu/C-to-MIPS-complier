@@ -5,7 +5,6 @@
 #include <vector>
 
 class Statement;
-
 typedef const Statement* StatementPtr;
 
 class Statement : public ASTNode {
@@ -13,45 +12,61 @@ public:
     virtual ~Statement() {};
 
     virtual void printPy(std::ostream &dst, int indentLevel, std::vector<std::string>& GlobalIdentifiers) const  = 0;
+    virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {}
 };
 
-class StatementSequence : public Statement {
+
+class BlockItemList : public ASTNodeList {
 protected:
-    std::vector<StatementPtr> statements;
+    std::vector<ASTNode*> blockItems;
 public:
-    StatementSequence() {}
-    virtual ~StatementSequence() {
-        for (auto statement : statements) {
-            delete statement;
-        }
-        statements.clear();
+    BlockItemList(ASTNode* _blockItem) {
+        blockItems.push_back(_blockItem);
     }
     
-    StatementSequence* addStatementToSequence(StatementPtr _statement) {
-        statements.push_back(_statement);
+    virtual ~BlockItemList() {
+        for (auto blockItem : blockItems) {
+            delete blockItem;
+        }
+        blockItems.clear();
+    }
+    
+    BlockItemList* insert(ASTNode* _node) {
+        blockItems.push_back(_node);
         return this;
     }
 
     virtual void printPy(std::ostream &dst, int indentLevel, std::vector<std::string>& GlobalIdentifiers) const override {
-        for (auto statement : statements) {
-            statement->printPy(dst, indentLevel, GlobalIdentifiers);
+        for (auto blockItem : blockItems) {
+            blockItem->printPy(dst, indentLevel, GlobalIdentifiers);
+        }
+    }
+    
+    virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {
+        for(auto blockItem : blockItems){
+            blockItem->printMIPS(dst, context);
         }
     }
 };
 
+
 class CompoundStatement : public Statement {
 protected:
-    StatementSequence* statements;
+    ASTNodeList* blockItemList;
 public:
-    CompoundStatement(StatementSequence* _statements) : statements(_statements) {}
+    CompoundStatement(ASTNodeList* _blockItemList) : blockItemList(_blockItemList) {}
     virtual ~CompoundStatement() {
-        delete statements;
+        if (blockItemList != NULL) delete blockItemList;
     }
 
     virtual void printPy(std::ostream &dst, int indentLevel, std::vector<std::string>& GlobalIdentifiers) const override {
         // dst<<"{"<<std::endl;
-        statements->printPy(dst, indentLevel, GlobalIdentifiers);
+        if (blockItemList != NULL) blockItemList->printPy(dst, indentLevel, GlobalIdentifiers);
         // dst<<"}";
+    }
+    
+    virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {
+        if (blockItemList != NULL) blockItemList->printMIPS(dst, context);
     }
 };
 
@@ -69,6 +84,11 @@ public:
         expr->printPy(dst, indentLevel, GlobalIdentifiers);
         dst<<std::endl;
     }
+    
+    virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {
+        expr->printMIPS(dst, context);
+    }
+    
 };
 
 
@@ -113,7 +133,11 @@ public:
         dst<<getIndent(indentLevel);
         dst<<"return";
         if(expr != NULL) { dst<<" "; expr->printPy(dst, indentLevel, GlobalIdentifiers); }
-        // dst<<std::endl;
+        dst<<std::endl;
+    }
+    
+    virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {
+        expr->printMIPS(dst, context);
     }
 
 };

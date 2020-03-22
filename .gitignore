@@ -1,0 +1,7 @@
+tmp/
+bin/
+.c9/
+src/*.o
+src/*.tab*
+src/*.yy*
+src/*.output

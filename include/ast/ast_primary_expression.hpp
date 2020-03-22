@@ -3,6 +3,7 @@
 
 #include <string>
 #include <iostream>
+#include <cstdint>
 
 class Variable
     : public Expression
@@ -21,6 +22,10 @@ public:
     virtual void printPy(std::ostream &dst, int indentLevel, std::vector<std::string>& GlobalIdentifiers) const override
     {
         dst<<*id;
+    }
+    
+    virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {
+       //  dst<<""<<std::endl;
     }
 
     // virtual double evaluate(
@@ -48,6 +53,13 @@ public:
     virtual void printPy(std::ostream &dst, int indentLevel, std::vector<std::string>& GlobalIdentifiers) const override
     {
         dst<<value;
+    }
+    
+    virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {
+        int val = static_cast<uint32_t>(value);
+        dst<<"lui $"<<destReg<<","<< (((val&0xFFFF0000)>>16)&0x0000FFFF) <<std::endl;
+        dst<<"ori $"<<destReg<<",$"<<destReg<<","<< (val&0xFFFF) << std::endl;
+        // only support int 
     }
 
     // virtual double evaluate(
@@ -85,6 +97,26 @@ public:
     //     // TODO: fix later
     //     return 0.4321;
     // }
+};
+
+class ParenthesizedExpression : public Expression {
+private:
+    Expression* expr;
+public:
+    ParenthesizedExpression(Expression* _expr) : expr(_expr) {}
+    virtual ~ParenthesizedExpression() {
+        delete expr;
+    }
+    
+    virtual void printPy(std::ostream &dst, int indentLevel, std::vector<std::string>& GlobalIdentifiers) const override {
+        dst<<"(";
+        expr->printPy(dst, indentLevel, GlobalIdentifiers);
+        dst<<")";
+    }
+    
+    virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {
+        expr->printMIPS(dst, context, destReg);
+    }
 };
 
 

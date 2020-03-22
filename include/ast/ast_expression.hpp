@@ -16,6 +16,8 @@ public:
     virtual ~Expression() {};
 
     virtual void printPy(std::ostream &dst, int indentLevel, std::vector<std::string>& GlobalIdentifiers) const = 0;
+    
+    virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {}
 
     //! Evaluate the tree using the given mapping of variables to numbers
     virtual double evaluate(
