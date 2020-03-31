@@ -27,6 +27,14 @@ public:
 
     const std::string getIdentifier() const
     { return *identifier; }
+    
+    virtual int getSizeOf(Context& context) const {
+        if (context.localVarOffsets.count(*identifier) != 0) {
+            return context.localVarSizes.at(*identifier);
+        } else {
+            return context.globalVarSizes.at(*identifier);
+        }
+    }
 
     virtual void printPy(std::ostream &dst, int indentLevel, std::vector<std::string>& GlobalIdentifiers) const override
     {
@@ -34,9 +42,9 @@ public:
     }
     
     virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {
-        if (context.localVarMap.count(*identifier) != 0) {
+        if (context.localVarOffsets.count(*identifier) != 0) {
             // local variable
-            dst<<"lw $"<<destReg<<", "<<context.localVarMap.at(*identifier)<<"($fp)"<<std::endl;
+            dst<<"lw $"<<destReg<<", "<<context.localVarOffsets.at(*identifier)<<"($fp)"<<std::endl;
             dst<<"nop"<<std::endl;
         } else {
             // global variable
@@ -46,9 +54,9 @@ public:
     }
     
     virtual void writeValue(std::ostream &dst, Context& context, int sourceReg) const {
-        if (context.localVarMap.count(*identifier) != 0) {
+        if (context.localVarOffsets.count(*identifier) != 0) {
             // local variable
-            dst<<"sw $"<<sourceReg<<", "<<context.localVarMap.at(*identifier)<<"($fp)"<<std::endl;
+            dst<<"sw $"<<sourceReg<<", "<<context.localVarOffsets.at(*identifier)<<"($fp)"<<std::endl;
             dst<<"nop"<<std::endl;
         } else {
             // global variable
@@ -58,9 +66,9 @@ public:
     }
     
     virtual void printAddress(std::ostream &dst, Context& context, int destReg = 2) const {
-        if (context.localVarMap.count(*identifier) != 0) {
+        if (context.localVarOffsets.count(*identifier) != 0) {
             // local variable
-            dst<<"addiu $"<<destReg<<", $fp, "<<context.localVarMap.at(*identifier)<<std::endl;
+            dst<<"addiu $"<<destReg<<", $fp, "<<context.localVarOffsets.at(*identifier)<<std::endl;
         } else {
             // global variable
             dst<<"la $"<<destReg<<", "<<*identifier<<std::endl;
@@ -89,10 +97,10 @@ public:
         index->printMIPS(dst, context, destReg);
         dst<<"sll $"<<destReg<<", $"<<destReg<<", 2"<<std::endl;
 
-        if (context.localVarMap.count(*identifier) != 0) {
+        if (context.localVarOffsets.count(*identifier) != 0) {
             // local variable
             dst<<"addu $"<<destReg<<", $fp, $"<<destReg<<std::endl;
-            dst<<"lw $"<<destReg<<", "<<context.localVarMap.at(*identifier)<<"($"<<destReg<<")"<<std::endl;
+            dst<<"lw $"<<destReg<<", "<<context.localVarOffsets.at(*identifier)<<"($"<<destReg<<")"<<std::endl;
             dst<<"nop"<<std::endl;
         } else {
             // global variable
@@ -109,10 +117,10 @@ public:
         context.popFromStack(dst, 3); context.popFromStack(dst, 2);
         dst<<"sll $8, $8, 2"<<std::endl;
         
-        if (context.localVarMap.count(*identifier) != 0) {
+        if (context.localVarOffsets.count(*identifier) != 0) {
             // local variable
             dst<<"addu $t0, $fp, $t0"<<std::endl;
-            dst<<"sw $"<<sourceReg<<", "<<context.localVarMap.at(*identifier)<<"($t0)"<<std::endl;
+            dst<<"sw $"<<sourceReg<<", "<<context.localVarOffsets.at(*identifier)<<"($t0)"<<std::endl;
             dst<<"nop"<<std::endl;
         } else {
             // // global variable
@@ -127,14 +135,14 @@ public:
         index->printMIPS(dst, context, destReg);
         dst<<"sll $"<<destReg<<", $"<<destReg<<", 2"<<std::endl;
         
-        if (context.localVarMap.count(*identifier) != 0) {
+        if (context.localVarOffsets.count(*identifier) != 0) {
             // local variable
             dst<<"addu $"<<destReg<<", $fp, $"<<destReg<<std::endl;
-            dst<<"addiu $"<<destReg<<", $"<<destReg<<", "<<context.localVarMap.at(*identifier)<<std::endl;
+            dst<<"addiu $"<<destReg<<", $"<<destReg<<", "<<context.localVarOffsets.at(*identifier)<<std::endl;
         } else {
             // global variable
             dst<<"la $t0, "<<*identifier<<std::endl;
-            dst<<"addu $t"<<destReg<<", $"<<destReg<<", $t0"<<std::endl;
+            dst<<"addu $"<<destReg<<", $"<<destReg<<", $t0"<<std::endl;
         }
     }
 };
@@ -186,6 +194,10 @@ public:
 
     double getValue() const
     { return value; }
+    
+    virtual int getSizeOf(Context& context) const {
+        return 4; // assumes int
+    }
 
     virtual void printPy(std::ostream &dst, int indentLevel, std::vector<std::string>& GlobalIdentifiers) const override
     {
@@ -232,6 +244,10 @@ public:
     ParenthesizedExpression(Expression* _expr) : expr(_expr) {}
     virtual ~ParenthesizedExpression() {
         delete expr;
+    }
+    
+    virtual int getSizeOf(Context& context) const {
+        return expr->getSizeOf(context);
     }
     
     virtual void printPy(std::ostream &dst, int indentLevel, std::vector<std::string>& GlobalIdentifiers) const override {

@@ -17,7 +17,7 @@ public:
     virtual void printPy(std::ostream &dst, int indentLevel, std::vector<std::string>& GlobalIdentifiers) const  = 0;
     virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {}
     
-    //virtual void LookUp(Context& context) const = 0; 
+    virtual void LookUp(Context& context) const  {}; 
 };
 
 
@@ -41,11 +41,11 @@ public:
         return this;
     }
     
-    // void LookUp(Context& context) {
-    //     for(auto blockItem : blockItems){
-    //         blockItem->printMIPS(dst, context);
-    //     }
-    // }
+    virtual void LookUp(Context& context) const{
+        for(auto blockItem : blockItems){
+            blockItem->LookUp(context);
+        }
+    }
     
     virtual void printPy(std::ostream &dst, int indentLevel, std::vector<std::string>& GlobalIdentifiers) const override {
         for (auto blockItem : blockItems) {
@@ -70,9 +70,9 @@ public:
         if (blockItemList != NULL) delete blockItemList;
     }
 
-    // virtual void LookUp(Context& context) const override{
-    //     if (blockItemList != NULL) blockItemList->LookUp(context);
-    // }
+    virtual void LookUp(Context& context)const {
+        if (blockItemList != NULL) blockItemList->LookUp(context);
+    }
     
     virtual void printPy(std::ostream &dst, int indentLevel, std::vector<std::string>& GlobalIdentifiers) const override {
         if (blockItemList != NULL) blockItemList->printPy(dst, indentLevel, GlobalIdentifiers);
@@ -92,7 +92,7 @@ public:
         delete expr;
     }
 
-    //virtual void LookUp(Context& context) const override{}
+    virtual void LookUp(Context& context)const{}
     
     virtual void printPy(std::ostream &dst, int indentLevel, std::vector<std::string>& GlobalIdentifiers) const override {
         dst<<getIndent(indentLevel);
@@ -114,7 +114,7 @@ public:
     virtual ~BreakStatement() {
     }
     
-    //virtual void LookUp(Context& context) const override{}
+    virtual void LookUp(Context& context)const {}
     
     virtual void printPy(std::ostream &dst, int indentLevel, std::vector<std::string>& GlobalIdentifiers) const  {
         dst<<getIndent(indentLevel);
@@ -158,8 +158,8 @@ public:
     virtual ~ReturnStatement() {
     }
     
-    //virtual void LookUp(Context& context) const override{}
-    
+    virtual void LookUp(Context& context)const {};
+
     virtual void printPy(std::ostream &dst, int indentLevel, std::vector<std::string>& GlobalIdentifiers) const  {
         dst<<getIndent(indentLevel);
         dst<<"return";
@@ -185,8 +185,6 @@ public:
         delete expr;
         delete statement;
     }
-    
-    //virtual void LookUp(Context& context) const override{}
     
 
     virtual void printPy(std::ostream &dst, int indentLevel, std::vector<std::string>& GlobalIdentifiers) const override {
@@ -290,7 +288,7 @@ public:
         dst<<continuestmnt<<":"<<std::endl;
         dst<<fail<<":"<<std::endl;
         expr->printMIPS(dst, context);
-        dst<<"bne $"<<destReg<<", $0, "<<pass<<std::endl;
+        dst<<"bne $2, $0, "<<pass<<std::endl;
         dst<<"nop"<<std::endl;
         dst<<breakstmnt<<":"<<std::endl;
         dst<<"nop"<<std::endl;
@@ -338,7 +336,7 @@ public:
         dst<<fail<<":"<<std::endl;
         if (mexpr != NULL) {
             mexpr->printMIPS(dst,context);
-            dst<<"bne $"<<destReg<<", $0,"<<pass<<std::endl; 
+            dst<<"bne $2, $0,"<<pass<<std::endl; 
         }
         else dst<<"b "<<pass<<std::endl;
         dst<<"nop"<<std::endl;
@@ -361,23 +359,38 @@ public:
         delete statement;
     }
     
-    //virtual void LookUp(Context& context) const override{}
     
     virtual void printPy(std::ostream &dst, int indentLevel, std::vector<std::string>& GlobalIdentifiers) const override {}
     
     virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {
         
+        std::string breakstmnt = context.makeLabel("switchbreak");
+        context.breakStatement.push(breakstmnt);
         expr->printMIPS(dst, context);
-
-        statement->printMIPS(dst, context);
+        statement->LookUp(context);
         context.switchcases.end = true;
-        for (int i = 0; i < context.switchcases.caseMap.size(); i++){
-            dst<<"li $3, "<< context.switchcases.caseMap[i].second <<std::endl;
-            dst<<"beq $"<<destReg<<", $3, "<<context.switchcases.caseMap[i].first<<std::endl;
+        for (unsigned int i = 0; i < context.switchcases.caseMap.size(); i++){
+            if (context.switchcases.caseMap[i].second != -1){
+                dst<<"li $3, "<< context.switchcases.caseMap[i].second <<std::endl;
+                dst<<"beq $"<<destReg<<", $3, "<<context.switchcases.caseMap[i].first<<std::endl;
+                dst<<"nop"<<std::endl;
+            }
+        }
+        
+        if (context.switchcases.defaultCase.second == true ){
+            dst<<"b "<<context.switchcases.defaultCase.first<<std::endl;
+            dst<<"nop"<<std::endl;
+        }
+        else {
+            dst<<"b "<<breakstmnt<<std::endl;
             dst<<"nop"<<std::endl;
         }
         
         statement->printMIPS(dst, context);
+        
+        dst<<breakstmnt<<":"<<std::endl;
+        //dst<<"nop"<<std::endl;
+        context.breakStatement.pop();
     }
 };
 
@@ -396,19 +409,47 @@ public:
     
     virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {
   
-        if (!context.switchcases.caseMap.empty() && context.switchcases.end==true ){
+        if (context.switchcases.end==true ){
             std::string label = context.switchcases.caseMap.begin()->first;
             context.switchcases.caseMap.erase(context.switchcases.caseMap.begin());
             dst<<label<<":"<<std::endl;
             statement->printMIPS(dst, context);   
         }  
         else {
-            std::string label = context.makeLabel("case");
-            int value = (int) expr->evaluate();
-            //std::pair cases(label, value);
-            context.switchcases.caseMap.push_back({label, value});
         }
     }
+    
+    virtual void LookUp(Context& context)const{
+        std::string label = context.makeLabel("case");
+        int value = (int) expr->evaluate();
+        context.switchcases.caseMap.push_back({label, value});
+    }
+};
+
+class DefaultCaseStatement :public Statement {
+protected:
+    StatementPtr statement;
+public:
+    DefaultCaseStatement (StatementPtr _statement): statement(_statement){}
+    virtual ~DefaultCaseStatement(){
+        delete statement;
+    }
+    
+    virtual void printPy(std::ostream &dst, int indentLevel, std::vector<std::string>& GlobalIdentifiers) const override {}
+    
+    virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {
+
+        dst<<context.switchcases.defaultCase.first<<":"<<std::endl;
+        statement->printMIPS(dst, context);   
+        
+    }
+    
+    virtual void LookUp(Context& context) const {
+        std::string label = context.makeLabel("switchdefault");
+        context.switchcases.defaultCase.first = label;
+        context.switchcases.defaultCase.second = true;
+    }
+
 };
 
 

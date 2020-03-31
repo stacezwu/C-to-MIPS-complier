@@ -948,7 +948,7 @@ public:
                 dst<<"sw $2, "<<i*4<<"($fp)"<<std::endl;
                 // (Horace) Code below no longer used but I'm keeping it here for reference
                 // std::string parameterName = Context::allFunctions.at(functionName)->functionContext->parameters[i];
-                // int offset = Context::allFunctions.at(functionName)->functionContext->localVarMap.at(parameterName);
+                // int offset = Context::allFunctions.at(functionName)->functionContext->localVarOffsets.at(parameterName);
                 // offset -= Context::allFunctions.at(functionName)->functionContext->frameSize;
                 // dst<<"sw $2, "<<offset<<"($fp)"<<std::endl;
             }
@@ -990,5 +990,22 @@ public:
     }
 };
 
+class SizeOfOperator : public Expression {
+protected:
+    Expression* expr;
+public:
+    SizeOfOperator(Expression* _expr) : expr(_expr) {
+    }
+    virtual ~SizeOfOperator() {
+        delete expr;
+    }
+
+    virtual void printPy(std::ostream &dst, int indentLevel, std::vector<std::string>& GlobalIdentifiers) const override {
+    }
+    
+    virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {
+        dst<<"li $"<<destReg<<", "<<expr->getSizeOf(context)<<std::endl;
+    }
+};
 
 #endif

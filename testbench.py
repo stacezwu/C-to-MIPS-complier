@@ -1,3 +1,5 @@
+# Testbench to run compiler tests
+
 import os
 import sys
 import subprocess
@@ -6,8 +8,8 @@ import glob
 
 c_compiler = 'bin/c_compiler'
 
-# tests = map(lambda x: {'test_program': x.replace('_driver', ''), 'test_driver': x}, glob.glob('compiler_tests/*/*_driver.c'))
-tests = map(lambda x: {'test_program': x.replace('_driver', ''), 'test_driver': x}, glob.glob('compiler_tests/misc/*_driver.c'))
+tests = map(lambda x: {'test_program': x.replace('_driver', ''), 'test_driver': x}, glob.glob('compiler_tests/*/*_driver.c'))
+# tests = map(lambda x: {'test_program': x.replace('_driver', ''), 'test_driver': x}, glob.glob('compiler_tests/misc/*_driver.c'))
 
 os.system('mkdir -p tmp/compiler/; rm tmp/compiler/*')
 pass_count = 0

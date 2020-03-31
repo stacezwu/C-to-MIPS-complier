@@ -8,12 +8,12 @@ class Context;
 
 class Declaration : public ASTNode {
 private:
-    ASTNode* specifiers;
+    Expression* specifiers;
     std::string* identifier;
     Expression* initializer;
 
 public:
-    Declaration(ASTNode* _specifiers, std::string* _identifier, Expression* _initializer) : specifiers(_specifiers), identifier(_identifier), initializer(_initializer) {}
+    Declaration(Expression* _specifiers, std::string* _identifier, Expression* _initializer) : specifiers(_specifiers), identifier(_identifier), initializer(_initializer) {}
     virtual ~Declaration() {
         delete specifiers;
         delete identifier;
@@ -36,17 +36,20 @@ public:
     }
     
     virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {
+        specifiers->printMIPS(dst, context);
+        
         if (context.inFunction == true) { // local variable declaration
-            context.addLocalVariable(*identifier);
+            context.addLocalVariable(*identifier, specifiers->getSizeOf(context));
             
             if (initializer != NULL){
                 initializer->printMIPS(dst, context, destReg);
-                dst<<"sw $"<<destReg<<", "<<context.localVarMap.at(*identifier)<<"($fp)"<<std::endl;
+                dst<<"sw $"<<destReg<<", "<<context.localVarOffsets.at(*identifier)<<"($fp)"<<std::endl;
             } else {
-                dst<<"sw $0, "<<context.localVarMap.at(*identifier)<<"($fp)"<<std::endl;
+                dst<<"sw $0, "<<context.localVarOffsets.at(*identifier)<<"($fp)"<<std::endl;
             }
         } else { // global variable declaration
             // context.globalVars.push_back(*identifier);
+            context.globalVarSizes.insert({*identifier, specifiers->getSizeOf(context)});
             
             int initialValue = 0;
             if (initializer != NULL){
@@ -64,7 +67,7 @@ class PointerDeclaration : public Declaration {
 private:
 
 public:
-    PointerDeclaration(ASTNode* _specifiers, std::string* _identifier, Expression* _initializer) : Declaration(_specifiers, _identifier, _initializer) {}
+    PointerDeclaration(Expression* _specifiers, std::string* _identifier, Expression* _initializer) : Declaration(_specifiers, _identifier, _initializer) {}
     virtual ~PointerDeclaration() {
     };
 };
@@ -108,13 +111,13 @@ public:
 
 class ArrayDeclaration : public ASTNode {
 private:
-    ASTNode* specifiers;
+    Expression* specifiers;
     std::string* identifier;
     Expression* arrayLength;
     ArrayInitializerList* initializerList;
 
 public:
-    ArrayDeclaration(ASTNode* _specifiers, std::string* _identifier, Expression* _arrayLength, ArrayInitializerList* _initializerList) : specifiers(_specifiers), identifier(_identifier), arrayLength(_arrayLength), initializerList(_initializerList) {}
+    ArrayDeclaration(Expression* _specifiers, std::string* _identifier, Expression* _arrayLength, ArrayInitializerList* _initializerList) : specifiers(_specifiers), identifier(_identifier), arrayLength(_arrayLength), initializerList(_initializerList) {}
     virtual ~ArrayDeclaration() {
         delete specifiers;
         delete identifier;
@@ -126,25 +129,28 @@ public:
     }
     
     virtual void printMIPS(std::ostream &dst, Context& context, int destReg = 2) const override {
+        specifiers->printMIPS(dst, context);
+        
         if (context.inFunction == true) {
-            context.addArray(*identifier, (int) arrayLength->evaluate());
+            context.addArray(*identifier, (int) arrayLength->evaluate(), specifiers->getSizeOf(context));
             
             if (initializerList != NULL){
                 int i;
                 for (i = 0; i < (int) initializerList->initializers.size(); i++) {
                     dst<<"li $"<<destReg<<", "<<initializerList->initializers[i]->evaluate()<<std::endl;
-                    dst<<"sw $"<<destReg<<", "<<context.localVarMap.at(*identifier)+4*i<<"($fp)"<<std::endl;
+                    dst<<"sw $"<<destReg<<", "<<context.localVarOffsets.at(*identifier)+4*i<<"($fp)"<<std::endl;
                 }
                 for (; i < (int) arrayLength->evaluate(); i++) {
                     // initialize remaining values to 0
-                    dst<<"sw $0, "<<context.localVarMap.at(*identifier)+4*i<<"($fp)"<<std::endl;
+                    dst<<"sw $0, "<<context.localVarOffsets.at(*identifier)+4*i<<"($fp)"<<std::endl;
                 }
             } else {
                 // leave values uninitialized
             }
         } else {
             // context.globalVars.push_back(*identifier);
-            
+            context.globalVarSizes.insert({*identifier, ((int) arrayLength->evaluate())*specifiers->getSizeOf(context)});
+
             if (initializerList != NULL) {
                 dst<<".data"<<std::endl;
                 dst<<".globl "<<*identifier<<std::endl;
@@ -185,9 +191,9 @@ public:
             context.enumerator.previous_value = value;
         } else value = ++(context.enumerator.previous_value); // create struct in context
         if (context.inFunction == true ){
-            context.addLocalVariable(*identifier);
+            context.addLocalVariable(*identifier, 4);
             dst<<"li $"<<destReg<<", "<<value<<std::endl;
-            dst<<"sw $"<<destReg<<", "<<context.localVarMap.at(*identifier)<<"($fp)"<<std::endl;
+            dst<<"sw $"<<destReg<<", "<<context.localVarOffsets.at(*identifier)<<"($fp)"<<std::endl;
         }
         else {
             // context.globalVars.push_back(*identifier);
@@ -254,17 +260,84 @@ public:
     }
 };
 
-class EnumDeclaration : public Declaration {
-protected:
-    EnumSpecifier* enumSpecifier;
+
+class InitDeclarator {
 public:
-    EnumDeclaration(EnumSpecifier* _enumSpecifier, std::string* _identifier, Expression* _initializer) : Declaration(new ASTSpecifierList("int"), _identifier, _initializer), enumSpecifier(_enumSpecifier) {
-        
+    std::string declaratorType;
+    std::string* identifier;
+    Expression* expr;
+    ArrayInitializerList* arrayInitializerList;
+    ASTNode* parameterList;
+    
+    InitDeclarator(std::string _declaratorType, std::string* _identifier, Expression* _expr, ArrayInitializerList* _arrayInitializerList, ASTNode* _parameterList) : declaratorType(_declaratorType), identifier(_identifier), expr(_expr), arrayInitializerList(_arrayInitializerList), parameterList(_parameterList) {
+        declaratorType = _declaratorType;
+    }
+    ~InitDeclarator() {
+        // delete identifier;
+        // delete expr;
+        // delete arrayInitializerList;
+        // delete parameterList;
+    }
+};
+
+class InitDeclaratorList : public ASTNode {
+protected:
+    std::vector<InitDeclarator*> initDeclarators;
+    std::vector<ASTNode*> generatedDeclarations;
+
+public:
+    InitDeclaratorList(std::string _declaratorType, std::string* _identifier, Expression* _expr, ArrayInitializerList* _arrayInitializerList, ASTNode* _parameterList) {
+        initDeclarators.push_back(new InitDeclarator(_declaratorType, _identifier, _expr, _arrayInitializerList, _parameterList));
+    }
+    virtual ~InitDeclaratorList() {
+        for (auto _initDeclarator : initDeclarators) {
+            delete _initDeclarator;
+        }
+        initDeclarators.clear();
+        for (auto _generatedDeclaration : generatedDeclarations) {
+            delete _generatedDeclaration;
+        }
+        generatedDeclarations.clear();
     }
     
-    virtual void printMIPS(std::ostream &dst, Context& context, int destReg = 2) const override {
-        enumSpecifier->printMIPS(dst, context);
-        Declaration::printMIPS(dst, context);
+    InitDeclaratorList* insert(InitDeclaratorList* initDeclaratorList) {
+        for (auto _initDeclarator : initDeclaratorList->initDeclarators) {
+            this->initDeclarators.push_back(_initDeclarator);
+        }
+        while(!initDeclaratorList->initDeclarators.empty()) {
+            initDeclaratorList->initDeclarators.pop_back();
+        }
+        delete initDeclaratorList;
+        return this;
+    }
+    
+    ASTNode* generateDeclarations(ASTSpecifierList* specifiers) {
+        for (auto _initDeclarator : initDeclarators) {
+            if (_initDeclarator->declaratorType == "variable") {
+                generatedDeclarations.push_back(new Declaration(specifiers, _initDeclarator->identifier, _initDeclarator->expr));
+            } else if (_initDeclarator->declaratorType == "pointer") {
+                generatedDeclarations.push_back(new PointerDeclaration(specifiers->insert(new ASTSpecifierList("pointer")), _initDeclarator->identifier, _initDeclarator->expr));
+            } else if (_initDeclarator->declaratorType == "array") {
+                generatedDeclarations.push_back(new ArrayDeclaration(specifiers, _initDeclarator->identifier, _initDeclarator->expr, _initDeclarator->arrayInitializerList));
+            } else if (_initDeclarator->declaratorType == "function") {
+                generatedDeclarations.push_back(new FunctionDeclaration(specifiers, _initDeclarator->identifier, _initDeclarator->parameterList));
+            }
+
+            delete _initDeclarator;
+        }
+        return this;
+    }
+    
+    virtual void printPy(std::ostream &dst, int indentLevel, std::vector<std::string>& GlobalIdentifiers) const override {
+        for (auto _generatedDeclaration : generatedDeclarations) {
+            _generatedDeclaration->printPy(dst, indentLevel, GlobalIdentifiers);
+        }
+    }
+    
+    virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {
+        for (auto _generatedDeclaration : generatedDeclarations) {
+            _generatedDeclaration->printMIPS(dst, context);
+        }
     }
 };
 

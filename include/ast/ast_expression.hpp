@@ -17,6 +17,9 @@ public:
     
     // virtual std::set<std::string> getTypes(Context& context) const = 0;
     // TODO: for pointer arithmetic and other purposes
+    virtual int getSizeOf(Context& context) const {
+        return -1; // placeholder value
+    }
 
     virtual void printPy(std::ostream &dst, int indentLevel, std::vector<std::string>& GlobalIdentifiers) const = 0;
     

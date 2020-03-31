@@ -7,8 +7,11 @@
 #include <map> 
 #include <stack>
 #include <utility>
+#include <set>
 
-class FunctionDefinitionOrDeclaration;
+// class FunctionDefinitionOrDeclaration;
+
+typedef std::set<std::string> string_set;
 
 class Context { // Each function call should have its own Context object
 private:
@@ -35,8 +38,11 @@ public:
     // static std::map<std::string, FunctionDefinitionOrDeclaration*> allFunctions;
     
     std::vector<std::string> parameters;
-    std::map<std::string, int> localVarMap; // store identifier and internal stack pointer in the stack
+    std::map<std::string, int> localVarOffsets; // store identifier and internal stack pointer in the stack
+    std::map<std::string, int> localVarSizes;
+    std::map<std::string, string_set*> localVarTypes;
     static std::vector<std::string> globalVars;
+    static std::map<std::string, int> globalVarSizes;
     //struct stmntFlag{
     std::stack<std::string> breakStatement;
     std::stack<std::string> continueStatement;
@@ -48,25 +54,12 @@ public:
     struct SwitchCases{
         bool end = false;
         std::vector<std::pair<std::string, int>> caseMap;
+        std::pair<std::string, bool> defaultCase = std::make_pair("default", false);
     } switchcases;
-    // void pushtobreakStatement(std::string label){
-    //     breakStatement.push(label);
-    // }
     
     void pushtocontinueStatement(std::string label){
         continueStatement.push(label);
     }
-    
-    // std::string popfrombreakStatement(std::ostream &dst){
-    //     if(!breakStatement.empty()){
-    //         std::string break_label = breakStatement.top();
-    //         breakStatement.pop();
-    //         // dst<<breakStatement.top()<<":"<<std::endl;
-    //         return break_label;
-    //     } else {
-    //         return "";
-    //     }
-    // }
     
     void popfromcontinueStatement(std::ostream &dst){
         if (!continueStatement.empty()){
@@ -75,19 +68,21 @@ public:
         }
     }
     
-    void addLocalVariable(std::string identifier) {
-        internalStackPointer -= 4;
-        localVarMap.insert({identifier, internalStackPointer});
+    void addLocalVariable(std::string identifier, int typeSize) {
+        internalStackPointer -= typeSize; // -= size
+        localVarOffsets.insert({identifier, internalStackPointer});
+        localVarSizes.insert({identifier, typeSize});
     }
     
-    void addParameter(std::string identifier) {
-        addLocalVariable(identifier);
+    void addParameter(std::string identifier, int size) {
+        addLocalVariable(identifier, size);
         parameters.push_back(identifier);
     }
     
-    void addArray(std::string identifier, int length) {
-        internalStackPointer -= 4*length; // assuming the previous element in the stack is 4 bytes long
-        localVarMap.insert({identifier, internalStackPointer});
+    void addArray(std::string identifier, int length, int typeSize) {
+        internalStackPointer -= typeSize*length; // assuming the previous element in the stack is 4 bytes long
+        localVarOffsets.insert({identifier, internalStackPointer});
+        localVarSizes.insert({identifier, typeSize*length});
     }
     
     void pushToStack(std::ostream &dst, int registerNumber) {

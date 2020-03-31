@@ -61,6 +61,7 @@ return          { return ST_RETURN; }   /* jump statement */
 do              { return ST_DO; }
 switch          { return ST_SWITCH; }
 case            { return ST_CASE; }
+default         { return ST_DEFAULT; }
 else            { return ST_ELSE; }
 for             { return ST_FOR; }
 if              { return ST_IF; }
@@ -80,6 +81,7 @@ long            { yylval.string=new std::string(yytext); return T_LONG; }
 float           { yylval.string=new std::string(yytext); return T_FLOAT; }
 double          { yylval.string=new std::string(yytext); return T_DOUBLE; } /* declaration */
 
+sizeof          { yylval.string=new std::string(yytext); return T_SIZEOF; }
 
 [0-9]+([.][0-9]*)?      { yylval.number=strtod(yytext, 0); return T_NUMBER; }
 \".*\"                  { yylval.string=new std::string(yytext); return T_STRING; }
