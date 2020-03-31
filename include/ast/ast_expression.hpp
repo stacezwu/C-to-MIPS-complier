@@ -15,7 +15,7 @@ class Expression : public ASTNode {
 public:
     virtual ~Expression() {};
     
-    // virtual std::string getType(Context& context) const { return ""; }
+    virtual std::string getType(Context& context) const { return ""; }
     // TODO: for pointer arithmetic and other purposes
     virtual int getSizeOf(Context& context) const {
         return -1; // placeholder value

@@ -80,6 +80,8 @@
 %type <string> T_STRING T_IDENTIFIER
 %type <string> T_TYPEDEF T_VOID T_BOOL T_SIGNED T_UNSIGNED T_CHAR T_INT T_SHORT T_LONG T_FLOAT T_DOUBLE
 
+
+%nonassoc TERNARY
 %right OP_EQ OP_PLUS_EQ OP_MINUS_EQ OP_TIMES_EQ OP_DIVIDE_EQ OP_MOD_EQ OP_BITWISE_OR_EQ OP_BITWISE_XOR_EQ OP_BITWISE_AND_EQ OP_LEFTSHIFT_EQ OP_RIGHTSHIFT_EQ
 %right T_QUESTION
 %left OP_LOGICAL_OR
@@ -122,6 +124,11 @@ FUNC_DEF : T_IDENTIFIER OP_LBRACKET OP_RBRACKET COMPND_STATMNT { $$ = new Functi
          | SPECIFIERS T_IDENTIFIER OP_LBRACKET T_VOID OP_RBRACKET COMPND_STATMNT { $$ = new FunctionDefinition($1, $2, NULL, $6); }
          | T_IDENTIFIER OP_LBRACKET PARAMETER_LIST OP_RBRACKET COMPND_STATMNT { $$ = new FunctionDefinition(new ASTSpecifierList("int"), $1, $3, $5); } // implicit return type
          | SPECIFIERS T_IDENTIFIER OP_LBRACKET PARAMETER_LIST OP_RBRACKET COMPND_STATMNT { $$ = new FunctionDefinition($1, $2, $4, $6); }
+         
+         | SPECIFIERS OP_TIMES T_IDENTIFIER OP_LBRACKET OP_RBRACKET COMPND_STATMNT  { $$ = new FunctionDefinition($1, $3, NULL, $6); }
+         | SPECIFIERS OP_TIMES T_IDENTIFIER OP_LBRACKET T_VOID OP_RBRACKET COMPND_STATMNT { $$ = new FunctionDefinition($1, $3, NULL, $7); }
+         | SPECIFIERS OP_TIMES T_IDENTIFIER OP_LBRACKET PARAMETER_LIST OP_RBRACKET COMPND_STATMNT { $$ = new FunctionDefinition($1, $3, $5, $7); }
+         
          
 PARAMETER_LIST : PARAMETER { $$ = new ParameterList($1); }
                | PARAMETER_LIST T_COMMA PARAMETER{ $$ = $1->addNewParameter($3); }
@@ -184,7 +191,7 @@ EXPR : PRIMARY_EXPR { $$ = $1; }
      | T_SIZEOF OP_LBRACKET SPECIFIERS OP_TIMES OP_RBRACKET { $$ = new SizeOfOperator($3->insert(new ASTSpecifierList("pointer"))); }
      | T_SIZEOF EXPR { $$ = new SizeOfOperator($2); }
      | PTR_UNARY_EXPR { $$ = $1; }
-     | EXPR T_QUESTION EXPR T_COLON EXPR { $$ = new ConditionalOperator($1, $3, $5);}
+     | EXPR T_QUESTION EXPR T_COLON EXPR %prec TERNARY { $$ = new ConditionalOperator($1, $3, $5);}
 
 PTR_UNARY_EXPR : MODIFIABLE_LVALUE_EXPR OP_DECREMENT { $$ = new PostfixDecrementOperator($1);}
              | MODIFIABLE_LVALUE_EXPR OP_INCREMENT { $$ = new PostfixIncrementOperator($1);}
@@ -286,9 +293,13 @@ INIT_DECLARATOR : T_IDENTIFIER { $$ = new InitDeclaratorList("variable", $1, NUL
             	| T_IDENTIFIER OP_EQ EXPR { $$ = new InitDeclaratorList("variable", $1, $3, NULL, NULL); }
             	| OP_TIMES T_IDENTIFIER OP_EQ EXPR { $$ = new InitDeclaratorList("pointer", $2, $4, NULL, NULL); }
             	| T_IDENTIFIER OP_L_SQUAREBRACKET EXPR OP_R_SQUAREBRACKET OP_EQ T_LBRACE ARRAY_INITIALIZER_LIST T_RBRACE { $$ = new InitDeclaratorList("array", $1, $3, $7, NULL); }
+            	| T_IDENTIFIER OP_L_SQUAREBRACKET EXPR OP_R_SQUAREBRACKET OP_EQ T_STRING { $$ = new InitDeclaratorList("array", $1, $3, new ArrayInitializerList($6), NULL); }
             	| T_IDENTIFIER OP_LBRACKET OP_RBRACKET { $$ = new InitDeclaratorList("function", $1, NULL, NULL, NULL); }
             	| T_IDENTIFIER OP_LBRACKET T_VOID OP_RBRACKET { $$ = new InitDeclaratorList("function", $1, NULL, NULL, NULL); }
             	| T_IDENTIFIER OP_LBRACKET PARAMETER_LIST OP_RBRACKET { $$ = new InitDeclaratorList("function", $1, NULL, NULL, $3); }
+            	| OP_TIMES T_IDENTIFIER OP_LBRACKET OP_RBRACKET { $$ = new InitDeclaratorList("function", $2, NULL, NULL, NULL); }
+            	| OP_TIMES T_IDENTIFIER OP_LBRACKET T_VOID OP_RBRACKET { $$ = new InitDeclaratorList("function", $2, NULL, NULL, NULL); }
+            	| OP_TIMES T_IDENTIFIER OP_LBRACKET PARAMETER_LIST OP_RBRACKET { $$ = new InitDeclaratorList("function", $2, NULL, NULL, $4); }
             	
 ARRAY_INITIALIZER_LIST : EXPR { $$ = new ArrayInitializerList($1); }
                         | ARRAY_INITIALIZER_LIST T_COMMA EXPR { $$->insert($3); }

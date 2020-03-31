@@ -100,6 +100,12 @@ public:
     ArrayInitializerList(ExpressionPtr _initializer) {
         initializers.push_back(_initializer);
     }
+    ArrayInitializerList(std::string* stringInitializer) {
+        for(char& c : *stringInitializer) {
+            initializers.push_back(new CharLiteral(c));
+        }
+        delete stringInitializer;
+    }
     
     virtual ~ArrayInitializerList() {
         for (auto initializer : initializers) {
@@ -229,6 +235,7 @@ public:
         }
         else {
             // context.globalVars.push_back(*identifier);
+            context.globalVarSizes.insert({*identifier, 4});
             dst<<".globl "<<*identifier<<std::endl;
             dst<<*identifier<<": .word "<<value<<std::endl;
         }

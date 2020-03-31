@@ -110,11 +110,11 @@ public:
         parameterTypeSpecifier->printMIPS(dst, context);
         context.addParameter(*parameterIdentifier, parameterTypeSpecifier->getSizeOf(context));
         
-        // if (isPointer) {
-        //     int typeSize = parameterTypeSpecifier->getPointerTypeSize();
-        //     context.localPointers.insert(*identifier);
-        //     context.localArrayTypeSizes.insert({*identifier, typeSize});
-        // }
+        if (isPointer) {
+            int typeSize = parameterTypeSpecifier->getPointerTypeSize();
+            context.localPointers.insert(*parameterIdentifier);
+            context.localArrayTypeSizes.insert({*parameterIdentifier, typeSize});
+        }
         
 
     }
