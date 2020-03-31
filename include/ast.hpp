@@ -87,11 +87,11 @@ public:
 
 #include "Context.hpp"
 #include "ast/ast_expression.hpp"
+#include "ast/ast_specifier.hpp"
 #include "ast/ast_primary_&_lvalue_expression.hpp"
 #include "ast/ast_statement.hpp"
 #include "ast/ast_function.hpp"
 #include "ast/ast_operators.hpp"
-#include "ast/ast_specifier.hpp"
 #include "ast/ast_declaration.hpp"
 
 extern const ASTNode* parseAST();

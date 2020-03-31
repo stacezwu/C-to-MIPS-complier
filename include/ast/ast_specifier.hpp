@@ -43,6 +43,19 @@ public:
             return 4;
         }
     }
+    
+    int getPointerTypeSize() const {
+        if (specifiers.count("long") > 0 && specifiers.count("double") > 0) return 8;
+        else if (specifiers.count("long") > 0) return 4;
+        else if (specifiers.count("short") > 0) return 2;
+        else if (specifiers.count("char") > 0) return 1;
+        else if (specifiers.count("float") > 0) return 4;
+        else if (specifiers.count("double") > 0) return 8;
+        else if (specifiers.count("int") > 0) return 4;
+        else {
+            return 4;
+        }
+    }
 
     virtual void printPy(std::ostream &dst, int indentLevel, std::vector<std::string>& GlobalIdentifiers) const override {
         // do nothing

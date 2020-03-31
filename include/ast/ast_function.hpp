@@ -17,7 +17,7 @@ public:
     
     FunctionDefinitionOrDeclaration(Expression* _typeSpecifier, std::string* _functionName, ASTNode* _parameterList) : typeSpecifier(_typeSpecifier), functionName(_functionName), parameterList(_parameterList) {
         // Context::allFunctions[*functionName] = this;
-        functionContext = new Context(128, *functionName); // 128 bytes = frame size
+        functionContext = new Context(512, *functionName); // 512 bytes = frame size
     }
     virtual ~FunctionDefinitionOrDeclaration() {
         delete typeSpecifier;
@@ -54,23 +54,23 @@ public:
     virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {
         typeSpecifier->printMIPS(dst, context);
         
-        // Allocate an arbitrarily large frame (128 bytes) on the stack
+        // Allocate an arbitrarily large frame (512 bytes) on the stack
         dst << ".globl " << *functionName << std::endl;
         dst << *functionName << ":" << std::endl;
-        dst << "addiu $sp,$sp,-128" << std::endl;
-        dst << "sw $fp,124($sp)" << std::endl;
+        dst << "addiu $sp,$sp,-512" << std::endl;
+        dst << "sw $fp,508($sp)" << std::endl;
         dst << "move $fp,$sp" << std::endl;
-        dst << "sw $ra,120($sp)" << std::endl;
-        // dst << "sw $s0,116($sp)" << std::endl;
+        dst << "sw $ra,504($sp)" << std::endl;
+        // dst << "sw $s0,500($sp)" << std::endl;
         if (parameterList != NULL) parameterList->printMIPS(dst, *functionContext, 2); // treat parameters as locally declared variables
         functionBody->printMIPS(dst, *functionContext);
         dst << "li $2, 0" << std::endl; // implicit return 0 if no return statement was called - TODO: this only works for int
         dst << *functionName << "_end_label:" << std::endl;
-        // dst << "lw $s0,116($sp)" << std::endl;
-        dst << "lw $ra,120($sp)" << std::endl;
+        // dst << "lw $s0,500($sp)" << std::endl;
+        dst << "lw $ra,504($sp)" << std::endl;
         dst << "move $sp,$fp" << std::endl;
-        dst << "lw $fp,124($sp)" << std::endl;
-        dst << "addiu $sp,$sp,128" << std::endl;
+        dst << "lw $fp,508($sp)" << std::endl;
+        dst << "addiu $sp,$sp,512" << std::endl;
         dst << "j $31" << std::endl;
         dst << "nop" << std::endl;
     }
@@ -92,10 +92,11 @@ public:
 
 class Parameter: public ASTNode{
 protected: 
-    Expression* parameterTypeSpecifier;
+    ASTSpecifierList* parameterTypeSpecifier;
     std::string* parameterIdentifier;
+    bool isPointer;
 public: 
-    Parameter(Expression* _parameterTypeSpecifier, std::string* _parameterIdentifier): parameterTypeSpecifier(_parameterTypeSpecifier), parameterIdentifier(_parameterIdentifier){}
+    Parameter(ASTSpecifierList* _parameterTypeSpecifier, std::string* _parameterIdentifier, bool _isPointer) : parameterTypeSpecifier(_parameterTypeSpecifier), parameterIdentifier(_parameterIdentifier), isPointer(_isPointer) {}
     virtual ~Parameter(){
         delete parameterTypeSpecifier;
         delete parameterIdentifier;
@@ -108,6 +109,14 @@ public:
     virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {
         parameterTypeSpecifier->printMIPS(dst, context);
         context.addParameter(*parameterIdentifier, parameterTypeSpecifier->getSizeOf(context));
+        
+        // if (isPointer) {
+        //     int typeSize = parameterTypeSpecifier->getPointerTypeSize();
+        //     context.localPointers.insert(*identifier);
+        //     context.localArrayTypeSizes.insert({*identifier, typeSize});
+        // }
+        
+
     }
 };
 

@@ -901,6 +901,10 @@ class AddressOfOperator : public Expression {
 public:
     AddressOfOperator(ModifiableLValue* _right) : right(_right) {}
     
+    virtual int getSizeOf(Context& context) const {
+        return 4; // address is always 4 bytes in MIPS
+    }
+    
     virtual void printPy(std::ostream &dst, int indentLevel, std::vector<std::string>& GlobalIdentifiers) const override {}
     
     virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {
@@ -1006,6 +1010,39 @@ public:
     virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {
         dst<<"li $"<<destReg<<", "<<expr->getSizeOf(context)<<std::endl;
     }
+};
+
+class ConditionalOperator : public Expression {
+protected:
+    ExpressionPtr condition;
+    ExpressionPtr texpr;
+    ExpressionPtr fexpr;
+public:
+    ConditionalOperator(ExpressionPtr _condition, ExpressionPtr _texpr, ExpressionPtr _fexpr) : condition(_condition), texpr(_texpr), fexpr(_fexpr) {
+    }
+    virtual ~ConditionalOperator() {
+        delete condition;
+        delete texpr;
+        delete fexpr;
+    }
+
+    virtual void printPy(std::ostream &dst, int indentLevel, std::vector<std::string>& GlobalIdentifiers) const override {
+    }
+    
+    virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {
+        std::string conditiontrue= context.makeLabel("conditiontrue");
+        std::string conditionfalse= context.makeLabel("conditionfalse");
+        condition->printMIPS(dst, context, destReg);
+        dst<<"beq $"<<destReg<<", $0,"<<conditionfalse<<std::endl;
+        dst<<"nop"<<std::endl;
+        texpr->printMIPS(dst, context, destReg);
+        dst<<"b "<<conditiontrue<<std::endl;
+        dst<<"nop"<<std::endl;
+        dst<<conditionfalse<<":"<<std::endl;
+        fexpr->printMIPS(dst, context, destReg);
+        dst<<conditiontrue<<":"<<std::endl;
+    }
+    
 };
 
 #endif

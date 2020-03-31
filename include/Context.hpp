@@ -37,16 +37,24 @@ public:
     
     // static std::map<std::string, FunctionDefinitionOrDeclaration*> allFunctions;
     
+    static int stringLiteralCount;
+    
     std::vector<std::string> parameters;
     std::map<std::string, int> localVarOffsets; // store identifier and internal stack pointer in the stack
     std::map<std::string, int> localVarSizes;
+    std::map<std::string, int> localArrayTypeSizes;
+    std::set<std::string> localPointers;
+    std::vector<std::map<std::string, int>> localStruct;
     std::map<std::string, string_set*> localVarTypes;
     static std::vector<std::string> globalVars;
     static std::map<std::string, int> globalVarSizes;
-    //struct stmntFlag{
+    static std::map<std::string, int> globalArrayTypeSizes;
+    static std::set<std::string> globalPointers;
+    static std::vector<std::map<std::string, int>> globalStruct;
+
     std::stack<std::string> breakStatement;
     std::stack<std::string> continueStatement;
-    //};
+    
     struct Enumerator{
         int previous_value = -1;
     } enumerator;
@@ -57,16 +65,16 @@ public:
         std::pair<std::string, bool> defaultCase = std::make_pair("default", false);
     } switchcases;
     
-    void pushtocontinueStatement(std::string label){
-        continueStatement.push(label);
-    }
+    // void pushtocontinueStatement(std::string label){
+    //     continueStatement.push(label);
+    // }
     
-    void popfromcontinueStatement(std::ostream &dst){
-        if (!continueStatement.empty()){
-            dst<<continueStatement.top()<<":"<<std::endl;
-            continueStatement.pop();    
-        }
-    }
+    // void popfromcontinueStatement(std::ostream &dst){
+    //     if (!continueStatement.empty()){
+    //         dst<<continueStatement.top()<<":"<<std::endl;
+    //         continueStatement.pop();    
+    //     }
+    // }
     
     void addLocalVariable(std::string identifier, int typeSize) {
         internalStackPointer -= typeSize; // -= size
@@ -79,11 +87,16 @@ public:
         parameters.push_back(identifier);
     }
     
-    void addArray(std::string identifier, int length, int typeSize) {
+    void addArray(std::string identifier, int length, int typeSize) { // for local arrays
         internalStackPointer -= typeSize*length; // assuming the previous element in the stack is 4 bytes long
         localVarOffsets.insert({identifier, internalStackPointer});
         localVarSizes.insert({identifier, typeSize*length});
+        localArrayTypeSizes.insert({identifier, typeSize});
     }
+    
+    // void addStruct(std::string identifier, int typeSize){
+        
+    // }
     
     void pushToStack(std::ostream &dst, int registerNumber) {
         internalStackPointer -= 4;

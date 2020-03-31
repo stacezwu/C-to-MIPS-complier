@@ -52,6 +52,7 @@ extern "C" int fileno(FILE *stream);
 ","             { return T_COMMA; }
 "{"             { return T_LBRACE; }
 "}"             { return T_RBRACE; }
+"?"             { return T_QUESTION; }
 
 break           { return ST_BREAK; }
 continue        { return ST_CONTINUE; }
@@ -68,6 +69,7 @@ if              { return ST_IF; }
 while           { return ST_WHILE; } /* selection/iteration statement */
 
 enum            { return T_ENUM; }
+struct          { return T_STRUCT; }
 
 typedef         { yylval.string=new std::string(yytext); return T_TYPEDEF; }
 void            { yylval.string=new std::string(yytext); return T_VOID; }
@@ -81,32 +83,45 @@ long            { yylval.string=new std::string(yytext); return T_LONG; }
 float           { yylval.string=new std::string(yytext); return T_FLOAT; }
 double          { yylval.string=new std::string(yytext); return T_DOUBLE; } /* declaration */
 
-sizeof          { yylval.string=new std::string(yytext); return T_SIZEOF; }
+sizeof          { return T_SIZEOF; }
 
-[0-9]+([.][0-9]*)?      { yylval.number=strtod(yytext, 0); return T_NUMBER; }
-\".*\"                  { yylval.string=new std::string(yytext); return T_STRING; }
+0[0-7]+[uUlL]? { yylval.int_type = std::stoi(yytext, NULL, 8); return T_INTEGER_LITERAL; }
+0[xX][0-9A-Fa-f]+[uUlL]? { yylval.int_type = std::stoi(yytext, NULL, 16); return T_INTEGER_LITERAL; }
+[0-9]+[uUlL]? { yylval.int_type = std::stoi(yytext, NULL, 10); return T_INTEGER_LITERAL; }
+[0-9]+"."[0-9]*[fF] { yylval.double_type = std::stod(yytext); return T_DOUBLE_LITERAL; }
+[0-9]*"."[0-9]+[fF] { yylval.double_type = std::stod(yytext); return T_DOUBLE_LITERAL; }
+[0-9]+"."[0-9]* { yylval.double_type = std::stod(yytext); return T_FLOAT_LITERAL; }
+[0-9]*"."[0-9]+ { yylval.double_type = std::stod(yytext); return T_FLOAT_LITERAL; }
+[0-9]*"."[0-9]+([Ee][+-]?[0-9]+)?[fF]	{ yylval.double_type = std::stod(yytext); return T_FLOAT_LITERAL; }
+[0-9]+"."[0-9]*([Ee][+-]?[0-9]+)?[fF]	{ yylval.double_type = std::stod(yytext); return T_FLOAT_LITERAL; }
+[0-9]*"."[0-9]+([Ee][+-]?[0-9]+)?	{ yylval.double_type = std::stod(yytext); return T_DOUBLE_LITERAL; }
+[0-9]+"."[0-9]*([Ee][+-]?[0-9]+)?	{ yylval.double_type = std::stod(yytext); return T_DOUBLE_LITERAL; }
+\"(\\.|[^\\"])*\"                  {
+                                    std::string tmp = std::string(yytext);
+                                    tmp = tmp.substr(1, tmp.size()-2);
+                                    yylval.string = new std::string(tmp); return T_STRING;
+                                    }
+'([^'\\\n]|\\.)+'	{
+                    std::string str = yytext;
+                    if (str == "'\\\\'") { yylval.int_type = '\\'; }
+                    else if (str == "'\\b'") { yylval.int_type = '\b'; }
+                    else if (str == "'\\n'") { yylval.int_type = '\n'; }
+                    else if (str == "'\\r'") { yylval.int_type = '\r'; }
+                    else if (str == "'\\t'") { yylval.int_type = '\t'; }
+                    else if (str == "'\\0'") { yylval.int_type = '\0'; }
+                    else if (str == "'\\\"'") { yylval.int_type = '\"'; }
+                    else if (str == "'\\\''") { yylval.int_type = '\''; }
+                    else { yylval.int_type = str[1]; }
+                    return T_CHAR_LITERAL;
+                  }
 [a-zA-Z_][a-zA-Z0-9_]*  { yylval.string=new std::string(yytext); return T_IDENTIFIER; }
 
 
 [ \t\r\n]+		{;}
+"#".*           {;}
 
 .               { fprintf(stderr, "Invalid token\n"); exit(1); }
 %%
-
-/*
-0[0-7]+[uUlL]? { yylval.number = std::stoi(yytext, NULL, 8); return T_INTEGER_LITERAL; }
-0[xX][0-9A-Fa-f]+[uUlL]? { yylval.number = std::stoi(yytext, NULL, 16); return T_INTEGER_LITERAL; }
-[0-9]+[uUlL]? { yylval.number = std::stoi(yytext, NULL, 10); return T_INTEGER_LITERAL; }
-
-[0-9]+"."[0-9]*[fF] { yylval.number = std::stod(yytext); return T_DOUBLE_LIT; }
-[0-9]*"."[0-9]+[fF] { yylval.number = std::stod(yytext); return T_DOUBLE_LIT; }
-[0-9]+"."[0-9]* { yylval.number = std::stod(yytext); return T_FLOAT_LIT; }
-[0-9]*"."[0-9]+ { yylval.number = std::stod(yytext); return T_FLOAT_LIT; }
-[0-9]*"."[0-9]+([Ee][+-]?[0-9]+)?[fF]	{ yylval.number = std::stod(yytext); return T_FLOAT_LIT; }
-[0-9]+"."[0-9]*([Ee][+-]?[0-9]+)?[fF]	{ yylval.number = std::stod(yytext); return T_FLOAT_LIT; }
-[0-9]*"."[0-9]+([Ee][+-]?[0-9]+)?	{ yylval.number = std::stod(yytext); return T_DOUBLE_LIT; }
-[0-9]+"."[0-9]*([Ee][+-]?[0-9]+)?	{ yylval.number = std::stod(yytext); return T_DOUBLE_LIT; } */
-
 void yyerror (char const *s)
 {
   fprintf (stderr, "Parse error : %s\n", s);

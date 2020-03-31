@@ -7,7 +7,7 @@
 class Context;
 
 class Declaration : public ASTNode {
-private:
+protected:
     Expression* specifiers;
     std::string* identifier;
     Expression* initializer;
@@ -37,19 +37,25 @@ public:
     
     virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {
         specifiers->printMIPS(dst, context);
+        int typeSize = specifiers->getSizeOf(context);
         
         if (context.inFunction == true) { // local variable declaration
-            context.addLocalVariable(*identifier, specifiers->getSizeOf(context));
+            context.addLocalVariable(*identifier, typeSize);
+            
+            std::string store_instr;
+            if (typeSize == 1) store_instr = "sb";
+            else if (typeSize == 2) store_instr = "sh";
+            else store_instr = "sw"; // for now assume size is 4
             
             if (initializer != NULL){
                 initializer->printMIPS(dst, context, destReg);
-                dst<<"sw $"<<destReg<<", "<<context.localVarOffsets.at(*identifier)<<"($fp)"<<std::endl;
+                dst<<store_instr<<" $"<<destReg<<", "<<context.localVarOffsets.at(*identifier)<<"($fp)"<<std::endl;
             } else {
-                dst<<"sw $0, "<<context.localVarOffsets.at(*identifier)<<"($fp)"<<std::endl;
+                dst<<store_instr<<" $0, "<<context.localVarOffsets.at(*identifier)<<"($fp)"<<std::endl;
             }
         } else { // global variable declaration
             // context.globalVars.push_back(*identifier);
-            context.globalVarSizes.insert({*identifier, specifiers->getSizeOf(context)});
+            context.globalVarSizes.insert({*identifier, typeSize});
             
             int initialValue = 0;
             if (initializer != NULL){
@@ -57,19 +63,35 @@ public:
             }
             dst<<".data"<<std::endl;
             dst<<".globl "<<*identifier<<std::endl;
-            dst<<*identifier<<": .word "<<initialValue<<std::endl; // initialize value to 0
+            if (typeSize == 1) dst<<*identifier<<": .byte "<<initialValue<<std::endl;
+            else if (typeSize == 2) dst<<*identifier<<": .half "<<initialValue<<std::endl;
+            else dst<<*identifier<<": .word "<<initialValue<<std::endl; // initialize value to 0
             dst<<".text"<<std::endl;
         }
     }
 };
 
 class PointerDeclaration : public Declaration {
-private:
-
+protected:
+    ASTSpecifierList* specifiersPtrCopy;
 public:
-    PointerDeclaration(Expression* _specifiers, std::string* _identifier, Expression* _initializer) : Declaration(_specifiers, _identifier, _initializer) {}
+    PointerDeclaration(ASTSpecifierList* _specifiers, std::string* _identifier, Expression* _initializer) : specifiersPtrCopy(_specifiers), Declaration(_specifiers->insert(new ASTSpecifierList("pointer")), _identifier, _initializer) {
+    }
     virtual ~PointerDeclaration() {
     };
+    
+    virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {
+        int typeSize = specifiersPtrCopy->getPointerTypeSize();
+        dst<<"#debug: pointer type size "<<typeSize<<std::endl;
+        if (context.inFunction == true) {
+            context.localPointers.insert(*identifier);
+            context.localArrayTypeSizes.insert({*identifier, typeSize});
+        } else {
+            context.globalPointers.insert(*identifier);
+            context.globalArrayTypeSizes.insert({*identifier, typeSize});
+        }
+        Declaration::printMIPS(dst, context, destReg);
+    }
 };
 
 class ArrayInitializerList : public ASTNode {
@@ -131,18 +153,25 @@ public:
     virtual void printMIPS(std::ostream &dst, Context& context, int destReg = 2) const override {
         specifiers->printMIPS(dst, context);
         
+        int typeSize = specifiers->getSizeOf(context);
+        
         if (context.inFunction == true) {
-            context.addArray(*identifier, (int) arrayLength->evaluate(), specifiers->getSizeOf(context));
+            context.addArray(*identifier, (int) arrayLength->evaluate(), typeSize);
             
             if (initializerList != NULL){
+                std::string store_instr;
+                if (typeSize == 1) store_instr = "sb";
+                else if (typeSize == 2) store_instr = "sh";
+                else store_instr = "sw"; // for now assume size is 4
+                
                 int i;
                 for (i = 0; i < (int) initializerList->initializers.size(); i++) {
                     dst<<"li $"<<destReg<<", "<<initializerList->initializers[i]->evaluate()<<std::endl;
-                    dst<<"sw $"<<destReg<<", "<<context.localVarOffsets.at(*identifier)+4*i<<"($fp)"<<std::endl;
+                    dst<<store_instr<<" $"<<destReg<<", "<<context.localVarOffsets.at(*identifier)+typeSize*i<<"($fp)"<<std::endl;
                 }
                 for (; i < (int) arrayLength->evaluate(); i++) {
                     // initialize remaining values to 0
-                    dst<<"sw $0, "<<context.localVarOffsets.at(*identifier)+4*i<<"($fp)"<<std::endl;
+                    dst<<store_instr<<" $0, "<<context.localVarOffsets.at(*identifier)+typeSize*i<<"($fp)"<<std::endl;
                 }
             } else {
                 // leave values uninitialized
@@ -150,11 +179,14 @@ public:
         } else {
             // context.globalVars.push_back(*identifier);
             context.globalVarSizes.insert({*identifier, ((int) arrayLength->evaluate())*specifiers->getSizeOf(context)});
+            context.globalArrayTypeSizes.insert({*identifier, specifiers->getSizeOf(context)});
 
             if (initializerList != NULL) {
                 dst<<".data"<<std::endl;
                 dst<<".globl "<<*identifier<<std::endl;
-                dst<<*identifier<<": .word ";
+                if (typeSize == 1) dst<<*identifier<<": .byte ";
+                else if (typeSize == 2) dst<<*identifier<<": .half ";
+                else dst<<*identifier<<": .word ";
                 initializerList->printConstantInitializerList(dst, (int) arrayLength->evaluate());
                 dst<<std::endl;
                 dst<<".text"<<std::endl;
@@ -316,7 +348,7 @@ public:
             if (_initDeclarator->declaratorType == "variable") {
                 generatedDeclarations.push_back(new Declaration(specifiers, _initDeclarator->identifier, _initDeclarator->expr));
             } else if (_initDeclarator->declaratorType == "pointer") {
-                generatedDeclarations.push_back(new PointerDeclaration(specifiers->insert(new ASTSpecifierList("pointer")), _initDeclarator->identifier, _initDeclarator->expr));
+                generatedDeclarations.push_back(new PointerDeclaration(specifiers, _initDeclarator->identifier, _initDeclarator->expr));
             } else if (_initDeclarator->declaratorType == "array") {
                 generatedDeclarations.push_back(new ArrayDeclaration(specifiers, _initDeclarator->identifier, _initDeclarator->expr, _initDeclarator->arrayInitializerList));
             } else if (_initDeclarator->declaratorType == "function") {
@@ -341,7 +373,52 @@ public:
     }
 };
 
+class StructDeclaratorList: public ASTNode{
+protected:
+    std::vector<ASTNode*> structDeclarators;
 
+public: 
+    StructDeclaratorList(ASTNode* _declarator){
+        structDeclarators.push_back(_declarator);
+    }
+    virtual ~StructDeclaratorList(){
+         for (auto declarator : structDeclarators){
+             delete declarator;                
+         }
+         structDeclarators.clear();
+     }
+    
+
+    StructDeclaratorList* addNewStructDeclarator(ASTNode*_declarator){
+        structDeclarators.push_back(_declarator);
+        return this;
+    }
+    
+    virtual void printPy(std::ostream &dst, int indentLevel, std::vector<std::string>& GlobalIdentifiers) const override {}
+    virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {
+        for (auto declarator : structDeclarators){
+            declarator->printMIPS(dst, context);
+        }
+    }
+    
+};
+
+class StructSpecifier : public ASTNode{
+protected:
+    std::string* identifier;
+    StructDeclaratorList* declarators;
+public:
+    StructSpecifier(std::string* _identifier, StructDeclaratorList* _declarators): identifier(_identifier), declarators(_declarators){}
+    virtual ~StructSpecifier(){
+        delete identifier;
+        delete declarators;
+    }
+    
+    virtual void printPy(std::ostream &dst, int indentLevel, std::vector<std::string>& GlobalIdentifiers) const override {}
+    virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {
+        if (declarators != NULL) declarators->printMIPS(dst, context);
+    }
+};
 
 
 #endif

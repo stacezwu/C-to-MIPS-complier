@@ -1,9 +1,10 @@
-CPPFLAGS += -std=c++11 -W -Wall -g -Wno-unused-parameter
+CPPFLAGS += -std=c++11 -W -Wall -g -Wno-unused-parameter -Wno-reorder
 CPPFLAGS += -I include
 
 all : bin/Context.o bin/print_mips bin/c_compiler bin/eval_expr bin/print_py
 
 bin/Context.o: include/Context.hpp include/Context.cpp
+	mkdir -p bin
 	g++ $(CPPFLAGS) -c include/Context.cpp -o bin/Context.o
 
 src/maths_parser.tab.cpp src/maths_parser.tab.hpp : src/maths_parser.y
