@@ -7,19 +7,35 @@
 //class Parameter;
 //class ParameterList;
 
-// basic function definition with no parameters and other features
-class FunctionDefinition : public ASTNode {
+class FunctionDefinitionOrDeclaration : public ASTNode {
 protected:
     ASTNode* typeSpecifier;
     std::string* functionName;
     ASTNode* parameterList;
-    Statement* functionBody;
 public:
-    FunctionDefinition(ASTNode* _typeSpecifier, std::string* _functionName, ASTNode* _parameterList, Statement* _functionBody) : typeSpecifier(_typeSpecifier), functionName(_functionName), parameterList(_parameterList), functionBody(_functionBody) {}
-    virtual ~FunctionDefinition() {
+    Context* functionContext;
+    
+    FunctionDefinitionOrDeclaration(ASTNode* _typeSpecifier, std::string* _functionName, ASTNode* _parameterList) : typeSpecifier(_typeSpecifier), functionName(_functionName), parameterList(_parameterList) {
+        // Context::allFunctions[*functionName] = this;
+        functionContext = new Context(128, *functionName); // 128 bytes = frame size
+    }
+    virtual ~FunctionDefinitionOrDeclaration() {
         delete typeSpecifier;
         delete functionName;
         delete parameterList;
+        delete functionContext;
+    }
+    
+    virtual void printPy(std::ostream &dst, int indentLevel, std::vector<std::string>& GlobalIdentifiers) const override {};
+    virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {};
+};
+
+class FunctionDefinition : public FunctionDefinitionOrDeclaration {
+protected:
+    Statement* functionBody;
+public:
+    FunctionDefinition(ASTNode* _typeSpecifier, std::string* _functionName, ASTNode* _parameterList, Statement* _functionBody) : FunctionDefinitionOrDeclaration(_typeSpecifier, _functionName, _parameterList), functionBody(_functionBody) {}
+    virtual ~FunctionDefinition() {
         delete functionBody;
     }
 
@@ -36,39 +52,59 @@ public:
     }
     
     virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {
-        // Allocate an arbitrarily large frame (64 bytes) on the stack
-        dst << ".globl" << *functionName << std::endl;
+        // Allocate an arbitrarily large frame (128 bytes) on the stack
+        dst << ".globl " << *functionName << std::endl;
         dst << *functionName << ":" << std::endl;
-        dst << "addiu $sp,$sp,-64" << std::endl;
-        dst << "sw $fp,60($sp)" << std::endl;
+        dst << "addiu $sp,$sp,-128" << std::endl;
+        dst << "sw $fp,124($sp)" << std::endl;
         dst << "move $fp,$sp" << std::endl;
-        dst << "addiu $s0, $fp, 52" << std::endl; // initialize internal frame pointer to $fp+52
-        functionBody->printMIPS(dst, context);
+        dst << "sw $ra,120($sp)" << std::endl;
+        // dst << "sw $s0,116($sp)" << std::endl;
+        if (parameterList != NULL) parameterList->printMIPS(dst, *functionContext, 2); // treat parameters as locally declared variables
+        functionBody->printMIPS(dst, *functionContext);
+        dst << "li $2, 0" << std::endl; // implicit return 0 if no return statement was called - TODO: this only works for int
+        dst << *functionName << "_end_label:" << std::endl;
+        // dst << "lw $s0,116($sp)" << std::endl;
+        dst << "lw $ra,120($sp)" << std::endl;
         dst << "move $sp,$fp" << std::endl;
-        dst << "lw $fp,60($sp)" << std::endl;
-        dst << "addiu $sp,$sp,64" << std::endl;
+        dst << "lw $fp,124($sp)" << std::endl;
+        dst << "addiu $sp,$sp,128" << std::endl;
         dst << "j $31" << std::endl;
         dst << "nop" << std::endl;
+    }
+};
+
+class FunctionDeclaration : public FunctionDefinitionOrDeclaration {
+public:
+    FunctionDeclaration(ASTNode* _typeSpecifier, std::string* _functionName, ASTNode* _parameterList) : FunctionDefinitionOrDeclaration(_typeSpecifier, _functionName, _parameterList) {}
+    virtual ~FunctionDeclaration() {}
+
+    virtual void printPy(std::ostream &dst, int indentLevel, std::vector<std::string>& GlobalIdentifiers) const override {}
+    
+    virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {
+        dst << ".globl " << *functionName << std::endl;
     }
 };
 
 
 class Parameter: public ASTNode{
 protected: 
-    ASTNode* argumentTypeSpecifier;
-    std::string* argumentIdentifier;
+    ASTNode* parameterTypeSpecifier;
+    std::string* parameterIdentifier;
 public: 
-    Parameter(ASTNode* _argumentTypeSpecifier, std::string* _argumentIdentifier): argumentTypeSpecifier(_argumentTypeSpecifier), argumentIdentifier(_argumentIdentifier){}
+    Parameter(ASTNode* _parameterTypeSpecifier, std::string* _parameterIdentifier): parameterTypeSpecifier(_parameterTypeSpecifier), parameterIdentifier(_parameterIdentifier){}
     virtual ~Parameter(){
-        delete argumentTypeSpecifier;
-        delete argumentIdentifier;
+        delete parameterTypeSpecifier;
+        delete parameterIdentifier;
     }
     
     virtual void printPy(std::ostream &dst, int indentLevel, std::vector<std::string>& GlobalIdentifiers) const override{
-        dst<<*argumentIdentifier<<" ";
+        dst<<*parameterIdentifier<<" ";
     }
     
-    virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {}
+    virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {
+        context.addParameter(*parameterIdentifier);
+    }
 };
 
 
@@ -100,7 +136,17 @@ public:
         // dst<<parameter_list[parameterList.size()-1]->printPy(dst, indentLevel, GlobalIdentifiers);
     }
     
-    virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {}
+    virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {
+        for (unsigned int i = 0; i < parameter_list.size(); i++){
+            parameter_list[i]->printMIPS(dst, context);
+            if (i < 4) {
+                dst<<"sw $a"<<i<<", "<<context.localVarMap.at(context.parameters[i])<<"($fp)"<<std::endl;
+            } else {
+                dst<<"lw $2, "<<i*4+context.frameSize<<"($fp)"<<std::endl;
+                dst<<"sw $2, "<<context.localVarMap.at(context.parameters[i])<<"($fp)"<<std::endl;
+            }
+        }
+    }
 };
 
 #endif

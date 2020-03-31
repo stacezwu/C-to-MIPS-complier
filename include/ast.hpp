@@ -5,6 +5,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <set>
 
 class Context;
 
@@ -27,10 +28,8 @@ protected:
 public:
     virtual ~ASTNode() {};
     
-    //std::vector<std::string*> GlobalIdentifiers;
     virtual void printPy(std::ostream &dst, int indentLevel, std::vector<std::string>& GlobalIdentifiers) const = 0;
     
-    // TODO: insert other parameters e.g. context
     virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const = 0;
 };
 
@@ -69,6 +68,12 @@ public:
         for (auto _externalDeclaration : externalDeclarations) {
             _externalDeclaration->printPy(dst, indentLevel, GlobalIdentifiers);
         }
+        
+        dst<<std::endl;
+        dst<<"if __name__ == \"__main__\":"<<std::endl;
+        dst<<"   import sys"<<std::endl;
+        dst<<"   ret=main()"<<std::endl;
+        dst<<"   sys.exit(ret)"<<std::endl;
     }
     
     virtual void printMIPS(std::ostream &dst, Context& context,int destReg = 2) const override {
@@ -80,11 +85,10 @@ public:
 
 #include "Context.hpp"
 #include "ast/ast_expression.hpp"
-#include "ast/ast_primary_expression.hpp"
+#include "ast/ast_primary_&_lvalue_expression.hpp"
 #include "ast/ast_statement.hpp"
-#include "ast/ast_operators.hpp"
-// #include "ast/ast_unary.hpp"
 #include "ast/ast_function.hpp"
+#include "ast/ast_operators.hpp"
 #include "ast/ast_specifier.hpp"
 #include "ast/ast_declaration.hpp"
 
